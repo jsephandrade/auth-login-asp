@@ -17,17 +17,15 @@ public class SmtpEmailSender : IEmailSender
         _logger = logger;
     }
 
-    public async Task SendVerifyEmailAsync(string email, string token, CancellationToken ct = default)
+    public async Task SendVerifyEmailAsync(string email, string code, CancellationToken ct = default)
     {
-        var link = BuildLink(_options.VerifyEmailUrlTemplate, email, token);
-        var body = $"Verify your email for Print Shop: {link}";
+        var body = $"Your Print Shop verification code is: {code}";
         await SendAsync(email, "Verify your email", body, ct);
     }
 
-    public async Task SendPasswordResetAsync(string email, string token, CancellationToken ct = default)
+    public async Task SendPasswordResetAsync(string email, string code, CancellationToken ct = default)
     {
-        var link = BuildLink(_options.ResetPasswordUrlTemplate, email, token);
-        var body = $"Reset your Print Shop password: {link}";
+        var body = $"Your Print Shop password reset code is: {code}";
         await SendAsync(email, "Reset your password", body, ct);
     }
 
@@ -68,15 +66,4 @@ public class SmtpEmailSender : IEmailSender
         return SecureSocketOptions.StartTlsWhenAvailable;
     }
 
-    private static string BuildLink(string template, string email, string token)
-    {
-        if (string.IsNullOrWhiteSpace(template))
-        {
-            return token;
-        }
-
-        return template
-            .Replace("{token}", Uri.EscapeDataString(token), StringComparison.OrdinalIgnoreCase)
-            .Replace("{email}", Uri.EscapeDataString(email), StringComparison.OrdinalIgnoreCase);
-    }
 }

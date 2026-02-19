@@ -18,8 +18,8 @@ public interface IRateLimiter
 
 public interface IEmailSender
 {
-    Task SendVerifyEmailAsync(string email, string token, CancellationToken ct = default);
-    Task SendPasswordResetAsync(string email, string token, CancellationToken ct = default);
+    Task SendVerifyEmailAsync(string email, string code, CancellationToken ct = default);
+    Task SendPasswordResetAsync(string email, string code, CancellationToken ct = default);
 }
 
 public interface ISessionValidator

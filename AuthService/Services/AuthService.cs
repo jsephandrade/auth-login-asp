@@ -8,6 +8,8 @@ using AuthService.Services.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MySqlConnector;
+using System.Globalization;
+using System.Security.Cryptography;
 
 namespace AuthService.Services;
 
@@ -18,7 +20,6 @@ public class AuthService : IAuthService
     private readonly IJwtService _jwt;
     private readonly IRefreshTokenService _refreshTokens;
     private readonly IPermissionService _permissions;
-    private readonly ITokenGenerator _tokenGenerator;
     private readonly ITokenHasher _tokenHasher;
     private readonly IAuditService _audit;
     private readonly IEmailSender _email;
@@ -33,7 +34,6 @@ public class AuthService : IAuthService
         IJwtService jwt,
         IRefreshTokenService refreshTokens,
         IPermissionService permissions,
-        ITokenGenerator tokenGenerator,
         ITokenHasher tokenHasher,
         IAuditService audit,
         IEmailSender email,
@@ -47,7 +47,6 @@ public class AuthService : IAuthService
         _jwt = jwt;
         _refreshTokens = refreshTokens;
         _permissions = permissions;
-        _tokenGenerator = tokenGenerator;
         _tokenHasher = tokenHasher;
         _audit = audit;
         _email = email;
@@ -116,18 +115,7 @@ public class AuthService : IAuthService
         };
         _db.UserTenants.Add(membership);
 
-        var token = _tokenGenerator.GenerateToken(32);
-        var tokenHash = _tokenHasher.HashToken(token);
-
-        var verify = new EmailVerificationToken
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenant.Id,
-            UserId = user.Id,
-            TokenHash = tokenHash,
-            CreatedAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow.AddHours(_tokenTtlOptions.EmailVerificationHours)
-        };
+        var (verify, verificationCode) = await BuildEmailVerificationTokenAsync(tenant.Id, user.Id, emailNormalized, ct);
         _db.EmailVerificationTokens.Add(verify);
 
         try
@@ -143,7 +131,7 @@ public class AuthService : IAuthService
 
         try
         {
-            await _email.SendVerifyEmailAsync(user.Email, token, ct);
+            await _email.SendVerifyEmailAsync(user.Email, verificationCode, ct);
         }
         catch (Exception ex)
         {
@@ -164,17 +152,39 @@ public class AuthService : IAuthService
 
     public async Task VerifyEmailAsync(VerifyEmailRequest request, CancellationToken ct = default)
     {
-        var hash = _tokenHasher.HashToken(request.Token);
+        var emailNormalized = request.Email.Trim().ToLowerInvariant();
+        await _rateLimiter.EnsureAllowedAsync($"verify-code:{emailNormalized}", 10, TimeSpan.FromMinutes(15), ct);
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.EmailNormalized == emailNormalized, ct);
+        if (user == null)
+        {
+            throw new ApiException(400, "invalid_verification_code", "Verification code is invalid.");
+        }
+
+        if (user.EmailVerifiedAt != null)
+        {
+            return;
+        }
+
+        var hash = HashVerificationCode(emailNormalized, request.Code.Trim());
+        var now = DateTime.UtcNow;
         var token = await _db.EmailVerificationTokens
-            .FirstOrDefaultAsync(t => t.TokenHash == hash && t.UsedAt == null && t.ExpiresAt > DateTime.UtcNow, ct);
+            .FirstOrDefaultAsync(t => t.UserId == user.Id && t.TokenHash == hash && t.UsedAt == null && t.ExpiresAt > now, ct);
 
         if (token == null)
         {
-            throw new ApiException(400, "invalid_token", "Invalid or expired token.");
+            var hasActiveCode = await _db.EmailVerificationTokens
+                .AnyAsync(t => t.UserId == user.Id && t.UsedAt == null && t.ExpiresAt > now, ct);
+            if (!hasActiveCode)
+            {
+                throw new ApiException(400, "verification_code_expired", "Verification code expired. Request a new code.");
+            }
+
+            throw new ApiException(400, "invalid_verification_code", "Verification code is invalid.");
         }
 
-        var user = await _db.Users.FirstAsync(u => u.Id == token.UserId, ct);
         user.EmailVerifiedAt = DateTime.UtcNow;
+        user.UpdatedAt = DateTime.UtcNow;
         token.UsedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
@@ -185,6 +195,53 @@ public class AuthService : IAuthService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Email verification succeeded but audit logging failed for {UserId}", user.Id);
+        }
+    }
+
+    public async Task ResendVerificationCodeAsync(ResendVerificationCodeRequest request, CancellationToken ct = default)
+    {
+        var emailNormalized = request.Email.Trim().ToLowerInvariant();
+        await _rateLimiter.EnsureAllowedAsync($"resend-verify:{emailNormalized}", 5, TimeSpan.FromMinutes(15), ct);
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.EmailNormalized == emailNormalized, ct);
+        if (user == null || user.EmailVerifiedAt != null)
+        {
+            return;
+        }
+
+        var tenantId = await _db.UserTenants.Where(ut => ut.UserId == user.Id)
+            .Select(ut => ut.TenantId)
+            .FirstOrDefaultAsync(ct);
+        if (tenantId == Guid.Empty)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        await _db.EmailVerificationTokens
+            .Where(t => t.UserId == user.Id && t.UsedAt == null && t.ExpiresAt > now)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(t => t.UsedAt, now), ct);
+
+        var (verify, verificationCode) = await BuildEmailVerificationTokenAsync(tenantId, user.Id, emailNormalized, ct);
+        _db.EmailVerificationTokens.Add(verify);
+        await _db.SaveChangesAsync(ct);
+
+        try
+        {
+            await _email.SendVerifyEmailAsync(user.Email, verificationCode, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Resend verification code succeeded but email send failed for {Email}", user.Email);
+        }
+
+        try
+        {
+            await _audit.LogAsync("EMAIL_VERIFICATION_CODE_RESENT", tenantId, user.Id, user.Id, null, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Resend verification code succeeded but audit logging failed for {UserId}", user.Id);
         }
     }
 
@@ -300,9 +357,9 @@ public class AuthService : IAuthService
 
     public async Task ForgotPasswordAsync(ForgotPasswordRequest request, CancellationToken ct = default)
     {
-        await _rateLimiter.EnsureAllowedAsync($"forgot:{request.Email}", 5, TimeSpan.FromMinutes(15), ct);
-
         var emailNormalized = request.Email.Trim().ToLowerInvariant();
+        await _rateLimiter.EnsureAllowedAsync($"forgot:{emailNormalized}", 5, TimeSpan.FromMinutes(15), ct);
+
         var user = await _db.Users.FirstOrDefaultAsync(u => u.EmailNormalized == emailNormalized, ct);
         if (user == null)
         {
@@ -313,8 +370,12 @@ public class AuthService : IAuthService
             .Select(ut => ut.TenantId)
             .FirstOrDefaultAsync(ct);
 
-        var token = _tokenGenerator.GenerateToken(32);
-        var tokenHash = _tokenHasher.HashToken(token);
+        var now = DateTime.UtcNow;
+        await _db.PasswordResetTokens
+            .Where(t => t.UserId == user.Id && t.UsedAt == null && t.ExpiresAt > now)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(t => t.UsedAt, now), ct);
+
+        var (tokenHash, resetCode) = await GenerateUniqueResetCodeHashAsync(emailNormalized, ct);
 
         var reset = new PasswordResetToken
         {
@@ -322,8 +383,8 @@ public class AuthService : IAuthService
             TenantId = tenantId,
             UserId = user.Id,
             TokenHash = tokenHash,
-            CreatedAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow.AddMinutes(_tokenTtlOptions.PasswordResetMinutes)
+            CreatedAt = now,
+            ExpiresAt = now.AddMinutes(_tokenTtlOptions.PasswordResetMinutes)
         };
 
         _db.PasswordResetTokens.Add(reset);
@@ -331,7 +392,7 @@ public class AuthService : IAuthService
 
         try
         {
-            await _email.SendPasswordResetAsync(user.Email, token, ct);
+            await _email.SendPasswordResetAsync(user.Email, resetCode, ct);
         }
         catch (Exception ex)
         {
@@ -348,17 +409,19 @@ public class AuthService : IAuthService
         }
     }
 
+    public async Task VerifyResetCodeAsync(VerifyResetCodeRequest request, CancellationToken ct = default)
+    {
+        var emailNormalized = request.Email.Trim().ToLowerInvariant();
+        await _rateLimiter.EnsureAllowedAsync($"verify-reset:{emailNormalized}", 10, TimeSpan.FromMinutes(15), ct);
+        await ResolveActiveResetTokenAsync(emailNormalized, request.Code.Trim(), ct);
+    }
+
     public async Task ResetPasswordAsync(ResetPasswordRequest request, CancellationToken ct = default)
     {
-        var hash = _tokenHasher.HashToken(request.Token);
-        var token = await _db.PasswordResetTokens
-            .FirstOrDefaultAsync(t => t.TokenHash == hash && t.UsedAt == null && t.ExpiresAt > DateTime.UtcNow, ct);
-        if (token == null)
-        {
-            throw new ApiException(400, "invalid_token", "Invalid or expired token.");
-        }
+        var emailNormalized = request.Email.Trim().ToLowerInvariant();
+        await _rateLimiter.EnsureAllowedAsync($"reset-password:{emailNormalized}", 10, TimeSpan.FromMinutes(15), ct);
+        var (token, user) = await ResolveActiveResetTokenAsync(emailNormalized, request.Code.Trim(), ct);
 
-        var user = await _db.Users.FirstAsync(u => u.Id == token.UserId, ct);
         user.PasswordHash = _passwordHasher.HashPassword(request.NewPassword);
         user.UpdatedAt = DateTime.UtcNow;
         token.UsedAt = DateTime.UtcNow;
@@ -464,5 +527,95 @@ public class AuthService : IAuthService
             .First();
 
         return selected.TenantId;
+    }
+
+    private async Task<(EmailVerificationToken Token, string Code)> BuildEmailVerificationTokenAsync(
+        Guid tenantId,
+        Guid userId,
+        string emailNormalized,
+        CancellationToken ct)
+    {
+        var (hash, code) = await GenerateUniqueVerificationCodeHashAsync(emailNormalized, ct);
+        var token = new EmailVerificationToken
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            UserId = userId,
+            TokenHash = hash,
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(_tokenTtlOptions.EmailVerificationMinutes)
+        };
+        return (token, code);
+    }
+
+    private async Task<(byte[] Hash, string Code)> GenerateUniqueVerificationCodeHashAsync(string emailNormalized, CancellationToken ct)
+    {
+        for (var i = 0; i < 12; i++)
+        {
+            var code = GenerateVerificationCode();
+            var hash = HashVerificationCode(emailNormalized, code);
+            var exists = await _db.EmailVerificationTokens.AnyAsync(t => t.TokenHash == hash, ct);
+            if (!exists)
+            {
+                return (hash, code);
+            }
+        }
+
+        throw new ApiException(503, "verification_code_unavailable", "Unable to generate verification code. Please try again.");
+    }
+
+    private byte[] HashVerificationCode(string emailNormalized, string code)
+        => _tokenHasher.HashToken($"verify:{emailNormalized}:{code}");
+
+    private static string GenerateVerificationCode()
+    {
+        var value = RandomNumberGenerator.GetInt32(0, 1_000_000);
+        return value.ToString("D6", CultureInfo.InvariantCulture);
+    }
+
+    private byte[] HashPasswordResetCode(string emailNormalized, string code)
+        => _tokenHasher.HashToken($"reset:{emailNormalized}:{code}");
+
+    private async Task<(byte[] Hash, string Code)> GenerateUniqueResetCodeHashAsync(string emailNormalized, CancellationToken ct)
+    {
+        for (var i = 0; i < 12; i++)
+        {
+            var code = GenerateVerificationCode();
+            var hash = HashPasswordResetCode(emailNormalized, code);
+            var exists = await _db.PasswordResetTokens.AnyAsync(t => t.TokenHash == hash, ct);
+            if (!exists)
+            {
+                return (hash, code);
+            }
+        }
+
+        throw new ApiException(503, "reset_code_unavailable", "Unable to generate reset code. Please try again.");
+    }
+
+    private async Task<(PasswordResetToken Token, User User)> ResolveActiveResetTokenAsync(string emailNormalized, string code, CancellationToken ct)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.EmailNormalized == emailNormalized, ct);
+        if (user == null)
+        {
+            throw new ApiException(400, "invalid_reset_code", "Reset code is invalid.");
+        }
+
+        var now = DateTime.UtcNow;
+        var hash = HashPasswordResetCode(emailNormalized, code);
+        var token = await _db.PasswordResetTokens
+            .FirstOrDefaultAsync(t => t.UserId == user.Id && t.TokenHash == hash && t.UsedAt == null && t.ExpiresAt > now, ct);
+        if (token != null)
+        {
+            return (token, user);
+        }
+
+        var hasActiveCode = await _db.PasswordResetTokens
+            .AnyAsync(t => t.UserId == user.Id && t.UsedAt == null && t.ExpiresAt > now, ct);
+        if (!hasActiveCode)
+        {
+            throw new ApiException(400, "reset_code_expired", "Reset code expired. Request a new code.");
+        }
+
+        throw new ApiException(400, "invalid_reset_code", "Reset code is invalid.");
     }
 }

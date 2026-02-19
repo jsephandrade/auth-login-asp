@@ -100,6 +100,8 @@ else
 builder.Services.AddScoped<ISessionValidator, SessionValidator>();
 builder.Services.AddScoped<ISessionCache, SessionCache>();
 builder.Services.AddSingleton<ITenantContextAccessor, TenantContextAccessor>();
+builder.Services.AddSingleton<IVerificationCodeDebugStore, InMemoryVerificationCodeDebugStore>();
+builder.Services.AddSingleton<IPasswordResetCodeDebugStore, InMemoryPasswordResetCodeDebugStore>();
 
 var emailOptions = builder.Configuration.GetSection("Email").Get<EmailOptions>() ?? new EmailOptions();
 if (!string.IsNullOrWhiteSpace(emailOptions.SmtpHost) && !string.IsNullOrWhiteSpace(emailOptions.FromEmail))

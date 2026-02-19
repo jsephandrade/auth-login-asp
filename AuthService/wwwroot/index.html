@@ -22,16 +22,32 @@
 
       <div id="message" class="message hidden" aria-live="polite"></div>
 
-      <section id="emailVerifyBanner" class="banner hidden">
-        <p id="emailVerifyText" class="banner-text"></p>
-        <button id="verifyEmailBtn" type="button" class="btn secondary">Verify Email</button>
+      <section id="emailVerifyPanel" class="verify-panel hidden" aria-label="Email Verification">
+        <p id="emailVerifyText" class="banner-text">Enter the 6-digit code sent to your email.</p>
+        <label for="verifyEmailInput">Verification Email</label>
+        <input id="verifyEmailInput" type="email" autocomplete="email" placeholder="name@company.com" />
+        <div class="otp-grid" role="group" aria-label="6 digit verification code">
+          <input class="otp-input" id="otp0" data-otp-index="0" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" />
+          <input class="otp-input" id="otp1" data-otp-index="1" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" />
+          <input class="otp-input" id="otp2" data-otp-index="2" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" />
+          <input class="otp-input" id="otp3" data-otp-index="3" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" />
+          <input class="otp-input" id="otp4" data-otp-index="4" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" />
+          <input class="otp-input" id="otp5" data-otp-index="5" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" />
+        </div>
+        <div class="verify-actions">
+          <button id="verifyCodeBtn" type="button" class="btn secondary">Verify Code</button>
+          <button id="resendCodeBtn" type="button" class="btn secondary ghost">Resend Code</button>
+        </div>
       </section>
 
       <form id="loginForm" class="form" novalidate>
         <label for="loginEmail">Email</label>
         <input id="loginEmail" type="email" autocomplete="username" placeholder="name@company.com" required />
 
-        <label for="loginPassword">Password</label>
+        <div class="field-head">
+          <label for="loginPassword">Password</label>
+          <button id="forgotBtn" class="link-btn" type="button">Forgot Password?</button>
+        </div>
         <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required />
 
         <button id="loginBtn" class="btn primary" type="submit">Sign In</button>

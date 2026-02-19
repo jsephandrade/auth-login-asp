@@ -19,12 +19,27 @@ public class RegisterRequest
 public class RegisterResponse
 {
     public Guid TenantId { get; set; }
+    public string? VerificationCode { get; set; }
 }
 
 public class VerifyEmailRequest
 {
-    [Required]
-    public string Token { get; set; } = string.Empty;
+    [Required, EmailAddress, MaxLength(320)]
+    public string Email { get; set; } = string.Empty;
+
+    [Required, RegularExpression(@"^\d{6}$")]
+    public string Code { get; set; } = string.Empty;
+}
+
+public class ResendVerificationCodeRequest
+{
+    [Required, EmailAddress, MaxLength(320)]
+    public string Email { get; set; } = string.Empty;
+}
+
+public class ResendVerificationCodeResponse
+{
+    public string? VerificationCode { get; set; }
 }
 
 public class LoginRequest
@@ -49,10 +64,27 @@ public class ForgotPasswordRequest
     public string Email { get; set; } = string.Empty;
 }
 
+public class ForgotPasswordResponse
+{
+    public string? ResetCode { get; set; }
+}
+
+public class VerifyResetCodeRequest
+{
+    [Required, EmailAddress, MaxLength(320)]
+    public string Email { get; set; } = string.Empty;
+
+    [Required, RegularExpression(@"^\d{6}$")]
+    public string Code { get; set; } = string.Empty;
+}
+
 public class ResetPasswordRequest
 {
-    [Required]
-    public string Token { get; set; } = string.Empty;
+    [Required, EmailAddress, MaxLength(320)]
+    public string Email { get; set; } = string.Empty;
+
+    [Required, RegularExpression(@"^\d{6}$")]
+    public string Code { get; set; } = string.Empty;
 
     [Required, MinLength(8), MaxLength(100)]
     public string NewPassword { get; set; } = string.Empty;

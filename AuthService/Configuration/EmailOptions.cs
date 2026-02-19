@@ -9,6 +9,4 @@ public class EmailOptions
     public string? SmtpPass { get; set; }
     public string FromEmail { get; set; } = string.Empty;
     public string FromName { get; set; } = string.Empty;
-    public string VerifyEmailUrlTemplate { get; set; } = string.Empty;
-    public string ResetPasswordUrlTemplate { get; set; } = string.Empty;
 }
