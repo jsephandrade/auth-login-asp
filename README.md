@@ -63,6 +63,27 @@ Default local URLs:
 - App/UI: `https://localhost:7023/index.html`
 - Swagger: `https://localhost:7023/swagger`
 
+## Deploy on Render
+This repo includes `render.yaml` for an efficient, scalable baseline:
+- `auth-log-web` (Docker web service, autoscaling enabled)
+- `auth-log-mysql` (private MySQL service with persistent disk)
+- `auth-log-redis` (Render Key Value for shared cache/rate-limit/session state)
+
+### One-time steps
+1. Push this repo to GitHub.
+2. In Render, create a new **Blueprint** and point it to your repo.
+3. Confirm the generated services from `render.yaml`.
+4. Deploy.
+
+### Important notes
+- Web health check path is `/healthz`.
+- App supports DB config via either:
+  - `AUTH_DB_CONNECTION`, or
+  - split vars (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSLMODE`).
+- `Jwt__Keys__0__SecretBase64` and `Security__Pepper` are generated in Render.
+- If you use SMTP in production, add `Email__SmtpHost`, `Email__SmtpPort`, `Email__UseSsl`, `Email__SmtpUser`, `Email__SmtpPass`, `Email__FromEmail`, `Email__FromName`.
+- Update `Cors__Origins__0` to your final domain if different from `https://auth-log-web.onrender.com`.
+
 ## API Endpoints (Auth)
 Base route: `/auth`
 

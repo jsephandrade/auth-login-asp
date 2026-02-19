@@ -215,6 +215,26 @@ app.UseAuthentication();
 app.UseMiddleware<TenantContextMiddleware>();
 app.UseAuthorization();
 
+app.MapGet("/healthz", async (AuthDbContext db, CancellationToken ct) =>
+{
+    try
+    {
+        if (await db.Database.CanConnectAsync(ct))
+        {
+            return Results.Ok(new { status = "ok" });
+        }
+    }
+    catch
+    {
+        // No-op: health endpoint returns unhealthy below.
+    }
+
+    return Results.Problem(
+        statusCode: StatusCodes.Status503ServiceUnavailable,
+        title: "unhealthy",
+        detail: "Database connectivity check failed.");
+});
+
 app.MapControllers();
 
 app.Run();
@@ -327,6 +347,11 @@ static string ResolveAuthDbConnectionString(IConfiguration configuration)
         conn = envConn;
     }
 
+    if (string.IsNullOrWhiteSpace(conn))
+    {
+        conn = BuildAuthDbConnectionStringFromParts(configuration) ?? string.Empty;
+    }
+
     if (conn.Contains("your_password", StringComparison.OrdinalIgnoreCase))
     {
         var injectedPassword = configuration["MYSQL_ROOT_PASSWORD"] ?? configuration["DB_PASSWORD"];
@@ -343,6 +368,65 @@ static string ResolveAuthDbConnectionString(IConfiguration configuration)
     }
 
     return conn;
+}
+
+static string? BuildAuthDbConnectionStringFromParts(IConfiguration configuration)
+{
+    var host = FirstNonEmpty(configuration["DB_HOST"], configuration["MYSQL_HOST"]);
+    var portRaw = FirstNonEmpty(configuration["DB_PORT"], configuration["MYSQL_PORT"]);
+    var database = FirstNonEmpty(configuration["DB_NAME"], configuration["MYSQL_DATABASE"]);
+    var user = FirstNonEmpty(configuration["DB_USER"], configuration["MYSQL_USER"]);
+    var password = FirstNonEmpty(configuration["DB_PASSWORD"], configuration["MYSQL_PASSWORD"]);
+    var sslModeRaw = FirstNonEmpty(configuration["DB_SSLMODE"], "Preferred");
+
+    if (string.IsNullOrWhiteSpace(host) ||
+        string.IsNullOrWhiteSpace(database) ||
+        string.IsNullOrWhiteSpace(user) ||
+        string.IsNullOrWhiteSpace(password))
+    {
+        return null;
+    }
+
+    uint port = 3306;
+    if (!string.IsNullOrWhiteSpace(portRaw) && !uint.TryParse(portRaw, out port))
+    {
+        return null;
+    }
+
+    var csb = new MySqlConnectionStringBuilder
+    {
+        Server = host,
+        Port = port,
+        Database = database,
+        UserID = user,
+        Password = password,
+        SslMode = ParseSslMode(sslModeRaw)
+    };
+
+    return csb.ConnectionString;
+}
+
+static string? FirstNonEmpty(params string?[] values)
+{
+    foreach (var value in values)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+static MySqlSslMode ParseSslMode(string? value)
+{
+    if (Enum.TryParse<MySqlSslMode>(value, ignoreCase: true, out var mode))
+    {
+        return mode;
+    }
+
+    return MySqlSslMode.Preferred;
 }
 
 static async Task EnsureMySqlDatabaseExistsAsync(string connectionString)

@@ -1,0 +1,14 @@
+.git
+.gitignore
+.vscode
+.idea
+**/bin
+**/obj
+**/obj_*
+**/bin_*
+**/*.user
+**/*.suo
+**/*.pdb
+**/*.log
+server.out.log
+server.err.log
