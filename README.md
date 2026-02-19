@@ -64,25 +64,40 @@ Default local URLs:
 - Swagger: `https://localhost:7023/swagger`
 
 ## Deploy on Render
-This repo includes `render.yaml` for an efficient, scalable baseline:
-- `auth-log-web` (Docker web service, autoscaling enabled)
-- `auth-log-mysql` (private MySQL service with persistent disk)
-- `auth-log-redis` (Render Key Value for shared cache/rate-limit/session state)
+This repo includes `render.yaml` for this architecture:
+- Render Static Site: `auth-log-frontend`
+- Render Web Service (API): `auth-log-api`
+- Railway MySQL DB (external, connected via `AUTH_DB_CONNECTION`)
 
 ### One-time steps
 1. Push this repo to GitHub.
 2. In Render, create a new **Blueprint** and point it to your repo.
 3. Confirm the generated services from `render.yaml`.
-4. Deploy.
+4. Deploy the Render services.
+5. In Railway, create MySQL and copy its connection string.
+6. In Render (`auth-log-api` service), set `AUTH_DB_CONNECTION` to the Railway MySQL URL (`MYSQL_URL` or `DATABASE_URL`) and redeploy.
 
 ### Important notes
-- Web health check path is `/healthz`.
+- API health check path is `/healthz`.
+- Static build writes `api-config.js` using `API_BASE_URL` (default in blueprint is `https://auth-log-api.onrender.com`).
+- API CORS is set to `https://auth-log-frontend.onrender.com` in blueprint; update `Cors__Origins__0` if your frontend URL differs.
+- For cross-site refresh cookies, blueprint sets:
+  - `AuthCookie__SameSite=None`
+  - `AuthCookie__Secure=true`
 - App supports DB config via either:
   - `AUTH_DB_CONNECTION`, or
   - split vars (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSLMODE`).
 - `Jwt__Keys__0__SecretBase64` and `Security__Pepper` are generated in Render.
-- If you use SMTP in production, add `Email__SmtpHost`, `Email__SmtpPort`, `Email__UseSsl`, `Email__SmtpUser`, `Email__SmtpPass`, `Email__FromEmail`, `Email__FromName`.
-- Update `Cors__Origins__0` to your final domain if different from `https://auth-log-web.onrender.com`.
+- If using Railway MySQL vars instead of URL, map them to the split DB vars above.
+- Render Static + Render Web can run on free plans, but Railway database pricing is separate (check Railway current plan/credit limits before go-live).
+- If you use SMTP in production, add:
+  - `Email__SmtpHost`
+  - `Email__SmtpPort`
+  - `Email__UseSsl`
+  - `Email__SmtpUser`
+  - `Email__SmtpPass`
+  - `Email__FromEmail`
+  - `Email__FromName`
 
 ## API Endpoints (Auth)
 Base route: `/auth`

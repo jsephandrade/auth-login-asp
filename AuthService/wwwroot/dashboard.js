@@ -35,7 +35,8 @@ const setBusy = (button, busy) => {
 
 const getAccessToken = () => sessionStorage.getItem(accessTokenKey);
 
-const buildApiUrl = (path) => `${window.location.origin}${path}`;
+const buildApiUrl = (path) =>
+  typeof window.apiUrl === 'function' ? window.apiUrl(path) : `${window.location.origin}${path}`;
 
 const parseResponse = async (res) => {
   const text = await res.text();

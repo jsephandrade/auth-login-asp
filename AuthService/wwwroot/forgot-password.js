@@ -90,7 +90,8 @@ const normalizeError = (status, body, flow) => {
   return body?.detail || 'Something went wrong. Please try again.';
 };
 
-const buildApiUrl = (path) => `${window.location.origin}${path}`;
+const buildApiUrl = (path) =>
+  typeof window.apiUrl === 'function' ? window.apiUrl(path) : `${window.location.origin}${path}`;
 
 const sanitizeDigit = (value) => (value || '').replace(/\D/g, '').slice(0, 1);
 

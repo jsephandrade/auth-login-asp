@@ -1,80 +1,34 @@
 services:
-  - type: pserv
-    name: auth-log-mysql
-    runtime: image
-    plan: starter
-    region: oregon
-    image:
-      url: mysql:8.0
-    disk:
-      name: mysql-data
-      mountPath: /var/lib/mysql
-      sizeGB: 20
+  - type: web
+    runtime: static
+    name: auth-log-frontend
+    buildCommand: |
+      rm -rf render-static
+      mkdir -p render-static
+      cp -R AuthService/wwwroot/. render-static/
+      API_VALUE="${API_BASE_URL%/}"
+      printf "window.__API_BASE_URL__ = \"%s\";\n" "$API_VALUE" > render-static/api-config.js
+    staticPublishPath: ./render-static
+    pullRequestPreviewsEnabled: false
     envVars:
-      - key: MYSQL_DATABASE
-        value: auth_login_asp
-      - key: MYSQL_USER
-        value: auth_app
-      - key: MYSQL_PASSWORD
-        generateValue: true
-      - key: MYSQL_ROOT_PASSWORD
-        generateValue: true
-
-  - type: keyvalue
-    name: auth-log-redis
-    plan: starter
-    maxmemoryPolicy: allkeys-lru
-    ipAllowList: []
+      - key: API_BASE_URL
+        value: https://auth-log-api.onrender.com
 
   - type: web
-    name: auth-log-web
+    name: auth-log-api
     runtime: docker
-    plan: standard
+    plan: free
     region: oregon
     dockerContext: .
     dockerfilePath: ./AuthService/Dockerfile
     autoDeploy: true
     healthCheckPath: /healthz
-    scaling:
-      minInstances: 2
-      maxInstances: 6
-      targetMemoryPercent: 70
-      targetCPUPercent: 65
+    pullRequestPreviewsEnabled: false
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
-      - key: DB_HOST
-        fromService:
-          type: pserv
-          name: auth-log-mysql
-          property: host
-      - key: DB_PORT
-        fromService:
-          type: pserv
-          name: auth-log-mysql
-          property: port
-      - key: DB_NAME
-        fromService:
-          type: pserv
-          name: auth-log-mysql
-          envVarKey: MYSQL_DATABASE
-      - key: DB_USER
-        fromService:
-          type: pserv
-          name: auth-log-mysql
-          envVarKey: MYSQL_USER
-      - key: DB_PASSWORD
-        fromService:
-          type: pserv
-          name: auth-log-mysql
-          envVarKey: MYSQL_PASSWORD
-      - key: DB_SSLMODE
-        value: None
-      - key: ConnectionStrings__Redis
-        fromService:
-          type: keyvalue
-          name: auth-log-redis
-          property: connectionString
+      - key: AUTH_DB_CONNECTION
+        sync: false
       - key: Jwt__CurrentKeyId
         value: key-render-2026-01
       - key: Jwt__Keys__0__KeyId
@@ -84,4 +38,8 @@ services:
       - key: Security__Pepper
         generateValue: true
       - key: Cors__Origins__0
-        value: https://auth-log-web.onrender.com
+        value: https://auth-log-frontend.onrender.com
+      - key: AuthCookie__SameSite
+        value: None
+      - key: AuthCookie__Secure
+        value: true

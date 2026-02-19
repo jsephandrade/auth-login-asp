@@ -134,7 +134,8 @@ const setTenant = (tenantId) => {
   }
 };
 
-const buildApiUrl = (path) => `${window.location.origin}${path}`;
+const buildApiUrl = (path) =>
+  typeof window.apiUrl === 'function' ? window.apiUrl(path) : `${window.location.origin}${path}`;
 
 const parseJwtPayload = (token) => {
   try {
