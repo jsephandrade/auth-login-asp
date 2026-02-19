@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard | Print Shop</title>
+  <link rel="stylesheet" href="/dashboard.css" />
+</head>
+<body>
+  <main class="dash-shell">
+    <header class="dash-header">
+      <div>
+        <p class="eyebrow">Print Shop</p>
+        <h1>Dashboard</h1>
+      </div>
+      <button id="logoutBtn" class="btn secondary" type="button">Sign Out</button>
+    </header>
+
+    <section id="status" class="status hidden" aria-live="polite"></section>
+
+    <section class="card">
+      <h2>Account</h2>
+      <dl class="meta">
+        <div>
+          <dt>Email</dt>
+          <dd id="emailValue">-</dd>
+        </div>
+        <div>
+          <dt>Workspace ID</dt>
+          <dd id="tenantValue">-</dd>
+        </div>
+        <div>
+          <dt>User ID</dt>
+          <dd id="userValue">-</dd>
+        </div>
+      </dl>
+      <div class="actions">
+        <button id="refreshBtn" class="btn primary" type="button">Refresh Session</button>
+      </div>
+    </section>
+
+    <section class="card split">
+      <div>
+        <h2>Roles</h2>
+        <ul id="rolesList" class="pill-list"></ul>
+      </div>
+      <div>
+        <h2>Permissions</h2>
+        <ul id="permissionsList" class="pill-list"></ul>
+      </div>
+    </section>
+  </main>
+
+  <script src="/dashboard.js"></script>
+</body>
+</html>

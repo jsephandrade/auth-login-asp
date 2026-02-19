@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Print Shop Account</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <p class="eyebrow">Print Shop</p>
+      <h1>Welcome back</h1>
+      <p class="subtext">Sign in to continue, or create a new account in seconds.</p>
+    </section>
+
+    <section class="card" aria-label="Authentication">
+      <div class="switch" role="tablist" aria-label="Auth Mode">
+        <button id="tabLogin" class="switch-btn active" role="tab" aria-selected="true" type="button">Login</button>
+        <button id="tabRegister" class="switch-btn" role="tab" aria-selected="false" type="button">Create Account</button>
+      </div>
+
+      <div id="message" class="message hidden" aria-live="polite"></div>
+
+      <section id="emailVerifyBanner" class="banner hidden">
+        <p id="emailVerifyText" class="banner-text"></p>
+        <button id="verifyEmailBtn" type="button" class="btn secondary">Verify Email</button>
+      </section>
+
+      <form id="loginForm" class="form" novalidate>
+        <label for="loginEmail">Email</label>
+        <input id="loginEmail" type="email" autocomplete="username" placeholder="name@company.com" required />
+
+        <label for="loginPassword">Password</label>
+        <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required />
+
+        <button id="loginBtn" class="btn primary" type="submit">Sign In</button>
+      </form>
+
+      <form id="registerForm" class="form hidden" novalidate>
+        <label for="regEmail">Email</label>
+        <input id="regEmail" type="email" autocomplete="email" placeholder="name@company.com" required />
+
+        <label for="regPassword">Password</label>
+        <input id="regPassword" type="password" autocomplete="new-password" placeholder="Create a password" required />
+
+        <label for="regConfirmPassword">Confirm Password</label>
+        <input id="regConfirmPassword" type="password" autocomplete="new-password" placeholder="Re-enter password" required />
+
+        <label for="regWorkspace">Workspace Name</label>
+        <input id="regWorkspace" type="text" placeholder="Your team or business name" required />
+
+        <button id="registerBtn" class="btn primary" type="submit">Create Account</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
